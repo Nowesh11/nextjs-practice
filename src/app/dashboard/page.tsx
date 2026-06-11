@@ -10,6 +10,7 @@ export default async function DashboardPage() {
   const session = await auth();
   // if no session → redirect to /login
   if (!session) return redirect('/login');
+  //hiii
 
   // show user data
   return (

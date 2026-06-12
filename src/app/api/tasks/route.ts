@@ -1,7 +1,10 @@
 // app/api/tasks/route.ts
 import { prisma } from "@/lib/prisma";
-import redis  from "@/lib/redis";
+import redis from "@/lib/redis";
 import pusher from "@/lib/pusher";
+import openai from '@/lib/openai';
+import { taskIndex } from "@/lib/pinecone";
+
 
 // GET /api/tasks
 export async function GET(req: Request) {
@@ -19,9 +22,11 @@ export async function GET(req: Request) {
     const cachedTasks = await redis.get(cachedKey);
     if (cachedTasks) {
       return Response.json(
-        {tasks:cachedTasks,
-        fromCache: true},
-        {status: 200}
+        {
+          tasks: cachedTasks,
+          fromCache: true
+        },
+        { status: 200 }
       )
     }
 
@@ -34,7 +39,7 @@ export async function GET(req: Request) {
 
     await redis.set(cachedKey, tasks, { ex: 60 });
 
-  
+
 
     return Response.json(
       { tasks },
@@ -78,6 +83,26 @@ export async function POST(req: Request) {
         priority: priority ?? 'medium',
         userId: Number(userId), // ✅ from middleware
       }
+    });
+
+    const embeddingResponse = await openai.embeddings.create({
+      input: task.title,
+      model: 'text-embedding-3-small'
+    });
+
+    const embedding = embeddingResponse.data[0].embedding;
+
+    await taskIndex.upsert({
+      records: [
+        {
+          id: String(task.id),
+          values: embedding,
+          metadata: {
+            title: title,
+            userId: String(userId),
+          }
+        }
+      ]
     });
 
     const cachedKey = `tasks:${userId}`;
